@@ -127,7 +127,7 @@ with st.expander("Offices and who commutes there", expanded=False):
     st.caption("Location: a full postcode or `lat,lon`. Days/week = 0 shows the commute "
                "but leaves it out of the weekly totals (handy for comparing job options).")
     ss.offices = st.data_editor(
-        ss.offices, num_rows="dynamic", use_container_width=True, key="office_editor",
+        ss.offices, num_rows="dynamic", width="stretch", key="office_editor",
         column_config={"Days/week": st.column_config.NumberColumn(min_value=0, max_value=7, step=1)})
 
 with st.form("listing"):
@@ -241,7 +241,7 @@ with tab_c:
                 "fastest_min": "Fastest (min)", "changes": "Changes", "walk_min": "Walking (min)",
                 "route": "Typical route", "error": "Error"}
         st.dataframe(df[[c for c in cols if c in df]].rename(columns=cols),
-                     hide_index=True, use_container_width=True)
+                     hide_index=True, width="stretch")
         st.caption(f"Door-to-door from leaving home, sampled every 10 min from "
                    f"{start.strftime('%H:%M')} over {window} min on {day:%a %d %b}. "
                    "'Typical' is the median, so waiting for infrequent trains counts.")
@@ -275,11 +275,11 @@ with tab_m:
     total = detail[["Payment", "Cash out", "Money gone"]].sum()
     detail.loc[len(detail)] = ["Total", *total]
     c1.dataframe(detail.style.format({k: "£{:,.0f}" for k in ["Payment", "Cash out", "Money gone"]}),
-                 hide_index=True, use_container_width=True)
+                 hide_index=True, width="stretch")
     c2.altair_chart(alt.Chart(layers).mark_bar().encode(
         x=alt.X("£/month:Q"), y=alt.Y("Layer:N", sort=None, title=None),
         color=alt.condition(alt.datum.Layer == "Rent instead", alt.value("#c9792b"), alt.value("#3b6ea8")),
-        tooltip=["Layer", alt.Tooltip("£/month:Q", format=",.0f")]), use_container_width=True)
+        tooltip=["Layer", alt.Tooltip("£/month:Q", format=",.0f")]), width="stretch")
     st.caption(f"Funding: {gbp(f.deposit)} deposit + {gbp(f.stamp_duty)} stamp duty + "
                f"{gbp(s.buy_fees)} fees, keeping {gbp(s.buffer)} back. Loan {gbp(f.loan)} at "
                f"{s.rate:.2%} for {s.fix_years} yrs, then {s.refix_rate:.2%}. "
@@ -295,7 +295,7 @@ with tab_o:
                 scale=alt.Scale(domain=[0, 1])),
         tooltip=["hold_years", alt.Tooltip("p_buy_wins:Q", format=".0%")])
         + alt.Chart(pd.DataFrame({"y": [0.5]})).mark_rule(strokeDash=[4, 4], color="grey").encode(y="y"),
-        use_container_width=True)
+        width="stretch")
     g = gaps[s.hold_years - 1] / 1000
     lo, hi = np.percentile(g, [1, 99])
     counts, edges = np.histogram(np.clip(g, lo, hi), bins=50)
@@ -307,13 +307,13 @@ with tab_o:
         color=alt.Color("Outcome:N", scale=alt.Scale(domain=["Buying ahead", "Renting ahead"],
                                                      range=["#3b6ea8", "#c9792b"]),
                         legend=alt.Legend(orient="top", title=None))),
-        use_container_width=True)
+        width="stretch")
     st.dataframe(sm.rename(columns={"hold_years": "Hold (yrs)", "p_buy_wins": "Buying wins",
                                     "median": "Median gap", "p10": "Bad case (10th pct)",
                                     "p90": "Good case (90th pct)"})
                  .style.format({"Buying wins": "{:.0%}", "Median gap": gbp,
                                 "Bad case (10th pct)": gbp, "Good case (90th pct)": gbp}),
-                 hide_index=True, use_container_width=True)
+                 hide_index=True, width="stretch")
     st.caption(f"20,000 simulated paths. House prices {h_mu:+.1%}/yr ± {h_sd:.0%}, investments "
                f"{inv_mu:.1%}/yr ± {inv_sd:.0%} (ISA, tax-free), rent {r_mu:+.1%}/yr. Whoever pays "
                "less each month invests the difference. Exit includes selling costs and any ERC. Histogram tails clipped at the 1st/99th percentile.")
@@ -338,7 +338,7 @@ if up is not None and not ss.get("_sl_loaded"):
     st.rerun()
 if ss.shortlist:
     sl = pd.DataFrame(ss.shortlist)
-    st.dataframe(sl, hide_index=True, use_container_width=True)
+    st.dataframe(sl, hide_index=True, width="stretch")
     st.download_button("Download shortlist (CSV)", sl.to_csv(index=False), "shortlist.csv", "text/csv")
 else:
     st.caption("Nothing yet. Evaluate a listing and add it to compare side by side. The hosted app "
