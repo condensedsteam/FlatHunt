@@ -1,0 +1,25 @@
+{
+  "journeys": [
+    {
+      "startDateTime": "2026-11-17T07:34:00",
+      "arrivalDateTime": "2026-11-17T08:05:00",
+      "duration": 31,
+      "legs": [
+        {"duration": 9, "mode": {"id": "walking", "name": "walking"}, "routeOptions": [{"name": ""}]},
+        {"duration": 15, "mode": {"id": "national-rail", "name": "national-rail"}, "routeOptions": [{"name": "Thameslink"}]},
+        {"duration": 7, "mode": {"id": "walking", "name": "walking"}, "routeOptions": [{"name": ""}]}
+      ]
+    },
+    {
+      "startDateTime": "2026-11-17T07:31:00",
+      "arrivalDateTime": "2026-11-17T08:14:00",
+      "duration": 43,
+      "legs": [
+        {"duration": 6, "mode": {"id": "walking", "name": "walking"}, "routeOptions": [{"name": ""}]},
+        {"duration": 12, "mode": {"id": "overground", "name": "overground"}, "routeOptions": [{"name": "Windrush"}]},
+        {"duration": 18, "mode": {"id": "elizabeth-line", "name": "elizabeth-line"}, "routeOptions": [{"name": "Elizabeth line"}]},
+        {"duration": 7, "mode": {"id": "walking", "name": "walking"}, "routeOptions": [{"name": ""}]}
+      ]
+    }
+  ]
+}
