@@ -69,8 +69,8 @@ and **Save / load settings → Download offices** to keep your data. Load them b
 Open **Offices and who commutes there** to edit the table:
 
 - **Person**: anything, e.g. `Me` or `Partner`. Weekly totals are grouped by this.
-- **Location**: a full postcode (`EC2Y 5AU`) or `lat,lon`. The defaults are rough
-  coordinates for London Wall Place, Tudor Street and Westminster. Replace them with real addresses.
+- **Location**: a full postcode (`EC2Y 5AU`) or `lat,lon`. The defaults are the
+  coordinates of Moorgate and Chancery Lane stations. Replace them with real office addresses.
 - **Days/week**: how often that person goes there. Set it to `0` to show a commute
   without counting it, which is useful for comparing possible jobs.
 

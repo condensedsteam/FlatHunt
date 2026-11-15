@@ -14,7 +14,8 @@ import pandas as pd
 import streamlit as st
 
 from flatcalc import commute as cm
-from flatcalc.costs import Scenario, funding, ltv_band_hint, stamp_duty, year1_breakdown
+from flatcalc.costs import (FTB_PRICE_CAP, Scenario, funding, ltv_band_hint, stamp_duty,
+                            stamp_duty_bands, year1_breakdown)
 from flatcalc.montecarlo import Market, simulate, summarise
 
 st.set_page_config(page_title="Flat evaluator", page_icon="🏠", layout="wide")
@@ -28,9 +29,8 @@ if not os.environ.get("TFL_APP_KEY"):
         pass
 
 DEFAULT_OFFICES = pd.DataFrame([
-    {"Person": "Me", "Office": "London Wall Place (example)", "Location": "51.5176,-0.0921", "Days/week": 3},
-    {"Person": "Me", "Office": "Tudor Street (example)", "Location": "51.5131,-0.1069", "Days/week": 0},
-    {"Person": "Partner", "Office": "Westminster (example)", "Location": "51.5005,-0.1265", "Days/week": 3},
+    {"Person": "Me", "Office": "Moorgate", "Location": "51.5186,-0.0886", "Days/week": 3},
+    {"Person": "Partner", "Office": "Chancery Lane", "Location": "51.5185,-0.1111", "Days/week": 3},
 ])
 
 
@@ -106,6 +106,10 @@ with st.sidebar:
     if not cm.tfl_key():
         st.caption("⚠️ No TFL_APP_KEY set: lookups are rate-limited. See README.")
 
+    st.header("Display")
+    show_formulas = st.toggle("Show formulas", True,
+                              help="Show how each figure is calculated, with your numbers filled in.")
+
     with st.expander("Save / load settings"):
         settings = {"offices": ss.offices.to_dict("records")}
         st.download_button("Download offices", json.dumps(settings, indent=2),
@@ -117,6 +121,12 @@ with st.sidebar:
             st.rerun()
 
 market = Market(house_mu=h_mu, house_sd=h_sd, invest_mu=inv_mu, invest_sd=inv_sd, rent_mu=r_mu)
+
+
+def explain(where, text: str) -> None:
+    """Show a formula under a figure when 'Show formulas' is on."""
+    if show_formulas:
+        where.caption(f"🧮 {text}")
 
 # ------------------------------------------------------------------ main
 st.title("Flat evaluator")
@@ -133,7 +143,7 @@ with st.expander("Offices and who commutes there", expanded=False):
 with st.form("listing"):
     c1, c2, c3 = st.columns(3)
     name = c1.text_input("Listing name or link", "£450k flat")
-    postcode = c1.text_input("Postcode", "SE15 3EE")
+    postcode = c1.text_input("Postcode", "SE14 5JN")
     price = c2.number_input("Asking price (£)", 50_000, 5_000_000, 450_000, 5_000)
     tenure = c2.selectbox("Tenure", ["Leasehold", "Share of freehold", "Freehold"])
     lease = c2.number_input("Lease years remaining (0 if freehold)", 0, 999, 125)
@@ -226,6 +236,27 @@ m[3].metric("Money gone / month", gbp(b["money_gone"]), f"{gbp(b['gone_vs_rent']
 m[4].metric(f"Buying wins ({s.hold_years}-yr hold)", f"{at_hold['p_buy_wins']:.0%}",
             f"median gap {gbp(at_hold['median'])}", delta_color="off", delta_arrow="off")
 
+ftb_rates = s.first_time_buyers and s.price <= FTB_PRICE_CAP
+explain(m[0], ("First-time buyer rates: " if ftb_rates else "Standard rates: ")
+        + " + ".join(f"{rate:.0%} of {gbp(lo)}–{gbp(hi)}" for lo, hi, rate, _ in stamp_duty_bands(s.price, s.first_time_buyers))
+        + f" = {gbp(f.stamp_duty)}")
+if s.deposit_override is not None:
+    dep_txt = f"Deposit set in the sidebar: {gbp(f.deposit)}."
+else:
+    dep_txt = (f"Cash {gbp(s.cash)} − stamp duty {gbp(f.stamp_duty)} − fees {gbp(s.buy_fees)} "
+               f"− buffer {gbp(s.buffer)} = {gbp(f.deposit)} (not below £0).")
+explain(m[1], f"{dep_txt} Loan = price {gbp(s.price)} − deposit = {gbp(f.loan)}. "
+              f"LTV = loan ÷ price = {f.ltv:.1%}.")
+explain(m[2], f"Mortgage payment {gbp(b['payment'])} + service charge {gbp(b['service_charge'])} "
+              f"+ ground rent {gbp(b['ground_rent'])} + maintenance {gbp(b['maintenance'])} "
+              f"= {gbp(b['cash_out'])}. Change = that − rent {gbp(s.rent)}.")
+explain(m[3], f"Interest {gbp(b['interest'])} + service charge, ground rent and maintenance {gbp(b['running'])} "
+              f"+ lost return {gbp(b['opportunity'])} + one-off costs share {gbp(b['one_off_pm'])} "
+              f"= {gbp(b['money_gone'])}. Change = that − rent {gbp(s.rent)}. Itemised in Monthly costs.")
+explain(m[4], f"Share of 20,000 simulated futures where the buyer ends up wealthier than the renter "
+              f"after {s.hold_years} yrs. Median gap = buyer − renter wealth in the middle one. "
+              "Wealth formulas are in the odds tab.")
+
 tab_c, tab_m, tab_o = st.tabs(["Commute", "Monthly costs", "Buy vs rent odds"])
 
 # ------------------------------------------------------------------ commute tab
@@ -245,12 +276,25 @@ with tab_c:
         st.caption(f"Door-to-door from leaving home, sampled every 10 min from "
                    f"{start.strftime('%H:%M')} over {window} min on {day:%a %d %b}. "
                    "'Typical' is the median, so waiting for infrequent trains counts.")
+        explain(st, "Door-to-door = arrival time − the time you want to leave, so waiting for a train "
+                    "counts. TfL is asked for its quickest route at each departure time. Typical = the "
+                    "median of those door-to-door times, Worst = the longest. Fastest = the shortest TfL "
+                    "journey time, which starts when you set off for the train, so it leaves out waiting. "
+                    "Walking = every walking leg of the typical journey added together: to the station, "
+                    "between platforms and to the office. Changes = rail/tube legs − 1. Buses aren't searched. "
+                    "Home is the centre of the postcode, not the front door.")
         weekly = cm.weekly_summary(res["commutes"])
         if any(p["weekly_min"] for p in weekly):
             wc = st.columns(len(weekly) + 1)
             for col, p in zip(wc, weekly):
                 col.metric(f"{p['person']}: hours/week", f"{p['weekly_min'] / 60:.1f}")
+                parts = [f"2 × {c['days']} days × {c['median_min']:g} min ({c['office']})"
+                         for c in res["commutes"] if c["person"] == p["person"]
+                         and c.get("median_min") is not None and c["days"] > 0]
+                if parts:
+                    explain(col, f"({' + '.join(parts)}) ÷ 60. Typical times, there and back.")
             wc[-1].metric("Combined hours/week", f"{sum(p['weekly_min'] for p in weekly) / 60:.1f}")
+            explain(wc[-1], "Sum of each person's hours/week.")
 
 # ------------------------------------------------------------------ monthly tab
 with tab_m:
@@ -263,17 +307,31 @@ with tab_m:
         "£/month": [b["payment"], b["cash_out"], b["money_gone"], b["rent"]],
     })
     c1, c2 = st.columns([3, 2])
+    tied_up = f.deposit + f.upfront_costs
+    erc_txt = (f" + early repayment charge {s.erc_pct:.1%} × loan {gbp(f.loan)} = {gbp(b['erc'])}"
+               if b["erc"] else "")
     detail = pd.DataFrame([
-        ["Mortgage interest", b["interest"], b["interest"], b["interest"]],
-        ["Capital repayment", b["capital"], b["capital"], 0],
-        ["Service charge", 0, b["service_charge"], b["service_charge"]],
-        ["Ground rent", 0, b["ground_rent"], b["ground_rent"]],
-        ["Maintenance", 0, b["maintenance"], b["maintenance"]],
-        [f"Lost return on {gbp(f.deposit + f.upfront_costs)}", 0, 0, b["opportunity"]],
-        [f"One-off costs {gbp(b['one_off_total'])} ÷ {s.hold_years * 12} months", 0, 0, b["one_off_pm"]],
-    ], columns=["Item", "Payment", "Cash out", "Money gone"])
+        ["Mortgage interest", b["interest"], b["interest"], b["interest"],
+         f"Average of the 12 monthly interest charges in year 1: balance × {s.rate:.2%} ÷ 12, "
+         f"balance starting at {gbp(f.loan)}"],
+        ["Capital repayment", b["capital"], b["capital"], 0,
+         f"Payment {gbp(b['payment'])} − interest {gbp(b['interest'])}"],
+        ["Service charge", 0, b["service_charge"], b["service_charge"],
+         f"{gbp(s.service_charge)}/yr ÷ 12"],
+        ["Ground rent", 0, b["ground_rent"], b["ground_rent"], f"{gbp(s.ground_rent)}/yr ÷ 12"],
+        ["Maintenance", 0, b["maintenance"], b["maintenance"], "Your monthly allowance"],
+        [f"Lost return on {gbp(tied_up)}", 0, 0, b["opportunity"],
+         f"(Deposit {gbp(f.deposit)} + stamp duty and fees {gbp(f.upfront_costs)}) "
+         f"× {s.invest_return:.1%} investment return ÷ 12"],
+        [f"One-off costs {gbp(b['one_off_total'])} ÷ {s.hold_years * 12} months", 0, 0, b["one_off_pm"],
+         f"(Stamp duty {gbp(f.stamp_duty)} + fees {gbp(s.buy_fees)} + selling costs "
+         f"{s.sell_cost_pct:.2%} × price {gbp(s.price)} = {gbp(b['sell_costs'])}{erc_txt}) "
+         f"÷ ({s.hold_years} yrs × 12)"],
+    ], columns=["Item", "Payment", "Cash out", "Money gone", "How it's calculated"])
     total = detail[["Payment", "Cash out", "Money gone"]].sum()
-    detail.loc[len(detail)] = ["Total", *total]
+    detail.loc[len(detail)] = ["Total", *total, "Sum of each column"]
+    if not show_formulas:
+        detail = detail.drop(columns="How it's calculated")
     c1.dataframe(detail.style.format({k: "£{:,.0f}" for k in ["Payment", "Cash out", "Money gone"]}),
                  hide_index=True, width="stretch")
     c2.altair_chart(alt.Chart(layers).mark_bar().encode(
@@ -284,6 +342,11 @@ with tab_m:
                f"{gbp(s.buy_fees)} fees, keeping {gbp(s.buffer)} back. Loan {gbp(f.loan)} at "
                f"{s.rate:.2%} for {s.fix_years} yrs, then {s.refix_rate:.2%}. "
                "House price changes are not included here; see the odds tab.")
+    explain(st, f"Mortgage payment = loan × r ÷ (1 − (1 + r)^−n) = {gbp(b['payment'])}, where loan = "
+                f"{gbp(f.loan)}, r = {s.rate:.2%} ÷ 12 and n = {s.term_years} yrs × 12 = {s.term_years * 12} "
+                "months. Payment = interest + capital. Cash out = payment + service charge + ground rent "
+                "+ maintenance. Money gone = interest + service charge + ground rent + maintenance + lost "
+                "return + one-off costs share. Capital is left out because you get it back when you sell.")
 
 # ------------------------------------------------------------------ odds tab
 with tab_o:
@@ -317,6 +380,16 @@ with tab_o:
     st.caption(f"20,000 simulated paths. House prices {h_mu:+.1%}/yr ± {h_sd:.0%}, investments "
                f"{inv_mu:.1%}/yr ± {inv_sd:.0%} (ISA, tax-free), rent {r_mu:+.1%}/yr. Whoever pays "
                "less each month invests the difference. Exit includes selling costs and any ERC. Histogram tails clipped at the 1st/99th percentile.")
+    explain(st, "For each simulated future, each month: the buyer pays mortgage payment + service charge + "
+                "ground rent + maintenance, and the renter pays rent. Whoever pays less invests the "
+                "difference. When the property is sold: "
+                f"buyer wealth = house value × (1 − {s.sell_cost_pct:.2%} selling costs) − remaining loan "
+                f"− early repayment charge ({s.erc_pct:.1%} of the loan if inside the {s.fix_years}-yr fix) "
+                "+ buyer's invested savings. "
+                f"Renter wealth = deposit + stamp duty and fees ({gbp(f.deposit + f.upfront_costs)}) "
+                "invested from day 1 + renter's invested savings. Gap = buyer − renter. Buying wins = "
+                "share of futures with gap > 0. Median gap, Bad case and Good case = the 50th, 10th and "
+                "90th percentile of the gap.")
 
 # ------------------------------------------------------------------ shortlist
 st.divider()

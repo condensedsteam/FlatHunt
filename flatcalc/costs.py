@@ -16,20 +16,21 @@ FTB_PRICE_CAP = 500_000
 LTV_BANDS = (0.60, 0.75, 0.80, 0.85, 0.90)
 
 
-def _banded(price: float, bands) -> float:
-    tax, lower = 0.0, 0.0
+def stamp_duty_bands(price: float, first_time_buyers: bool = True) -> list[tuple[float, float, float, float]]:
+    """(band start, band end, rate, tax) for each SDLT band the price reaches."""
+    bands = SDLT_FTB if first_time_buyers and price <= FTB_PRICE_CAP else SDLT_STANDARD
+    out, lower = [], 0.0
     for upper, rate in bands:
         if price > lower:
-            tax += (min(price, upper) - lower) * rate
+            top = min(price, upper)
+            out.append((lower, top, rate, (top - lower) * rate))
         lower = upper
-    return tax
+    return out
 
 
 def stamp_duty(price: float, first_time_buyers: bool = True) -> float:
     """SDLT for a main residence (no additional-property surcharge)."""
-    if first_time_buyers and price <= FTB_PRICE_CAP:
-        return _banded(price, SDLT_FTB)
-    return _banded(price, SDLT_STANDARD)
+    return sum(tax for *_, tax in stamp_duty_bands(price, first_time_buyers))
 
 
 def monthly_payment(principal: float, annual_rate: float, months: int) -> float:
@@ -112,9 +113,10 @@ def year1_breakdown(s: Scenario) -> dict:
     cash_out = pay + running
     tied_up = f.deposit + f.upfront_costs
     opportunity = tied_up * s.invest_return / 12
-    one_off = f.upfront_costs + s.price * s.sell_cost_pct
-    if s.hold_years < s.fix_years:
-        one_off += f.loan * s.erc_pct  # approx: ERC on the opening balance
+    sell_costs = s.price * s.sell_cost_pct
+    # approx: ERC on the opening balance
+    erc = f.loan * s.erc_pct if s.hold_years < s.fix_years else 0.0
+    one_off = f.upfront_costs + sell_costs + erc
     one_off_pm = one_off / (s.hold_years * 12)
     gone = interest + running + opportunity + one_off_pm
     return {
@@ -122,6 +124,7 @@ def year1_breakdown(s: Scenario) -> dict:
         "service_charge": svc, "ground_rent": gr, "maintenance": s.maintenance,
         "running": running, "cash_out": cash_out,
         "opportunity": opportunity, "one_off_total": one_off, "one_off_pm": one_off_pm,
+        "sell_costs": sell_costs, "erc": erc,
         "money_gone": gone, "rent": s.rent,
         "cash_out_vs_rent": cash_out - s.rent, "gone_vs_rent": gone - s.rent,
     }
