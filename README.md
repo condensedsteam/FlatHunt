@@ -39,7 +39,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 export TFL_APP_KEY=...        # optional but recommended (see below)
 streamlit run app.py
-pytest -q                     # 20 tests, no network needed
+pytest -q                     # 21 tests, no network needed
 ```
 
 ## Get a TfL API key (free, ~2 minutes)

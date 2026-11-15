@@ -111,15 +111,24 @@ def plan(origin: tuple[float, float], dest: tuple[float, float], when: datetime,
     wait = min_interval - (time.monotonic() - _last_call[0])
     if wait > 0:
         time.sleep(wait)
-    r = session.get(url, params=params, timeout=20)
+    # Errors from requests include the full URL, and the URL contains app_key. Never let
+    # them reach the UI: replace them with messages that don't mention the URL.
+    try:
+        r = session.get(url, params=params, timeout=20)
+    except requests.RequestException as e:
+        raise CommuteError(f"Couldn't reach TfL ({type(e).__name__}). Try again in a minute.") from None
     if not getattr(r, "from_cache", False):
         _last_call[0] = time.monotonic()
     if r.status_code == 429:
         raise CommuteError("TfL rate limit hit. Add a TFL_APP_KEY or try again in a minute.")
     if r.status_code == 300:   # TfL disambiguation: shouldn't happen with lat,lon
         raise CommuteError("TfL could not resolve one of the locations.")
-    r.raise_for_status()
-    return parse_journeys(r.json(), when)
+    if r.status_code >= 400:   # not raise_for_status(): its message contains the URL
+        raise CommuteError(f"TfL returned an error ({r.status_code}). Try again later.")
+    try:
+        return parse_journeys(r.json(), when)
+    except ValueError:
+        raise CommuteError("TfL sent a response that couldn't be read.") from None
 
 
 def departure_times(day: date, start: str = "07:30", window_min: int = 30,

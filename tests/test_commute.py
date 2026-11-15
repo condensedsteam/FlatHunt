@@ -52,6 +52,24 @@ def test_robust_commute_samples_window():
     assert out["fastest_min"] == 31 and out["worst_min"] == 35
 
 
+def test_errors_never_expose_app_key():
+    import pytest
+    import requests
+
+    class BadStatus(FakeSession):
+        def get(self, url, params=None, timeout=None):
+            return FakeResponse({}, status=500)
+
+    class Unreachable(FakeSession):
+        def get(self, url, params=None, timeout=None):
+            raise requests.ConnectionError(f"Max retries exceeded with url: {url}?app_key={params['app_key']}")
+
+    for sess in (BadStatus(), Unreachable()):
+        with pytest.raises(cm.CommuteError) as err:
+            cm.plan((51.46, -0.06), (51.51, -0.09), datetime(2026, 11, 17, 7, 30), sess, "SECRET123")
+        assert "SECRET123" not in str(err.value) and "app_key" not in str(err.value)
+
+
 def test_weekly_summary_ignores_zero_day_offices():
     rows = [{"person": "Me", "days": 3, "median_min": 30},
             {"person": "Me", "days": 0, "median_min": 20},
